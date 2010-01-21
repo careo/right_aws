@@ -97,66 +97,80 @@ module RightAws
       @@api
     end
     
-    # Create a new handle to an EC2 account. All handles share the same per process or per thread
-    # HTTP connection to Amazon EC2. Each handle is for a specific account. The params have the
-    # following options:
-    # * <tt>:endpoint_url</tt> a fully qualified url to Amazon API endpoint (this overwrites: :server, :port, :service, :protocol and :region). Example: 'https://eu-west-1.ec2.amazonaws.com/'
-    # * <tt>:server</tt>: EC2 service host, default: DEFAULT_HOST
-    # * <tt>:region</tt>: EC2 region (North America by default)
-    # * <tt>:port</tt>: EC2 service port, default: DEFAULT_PORT
-    # * <tt>:protocol</tt>: 'http' or 'https', default: DEFAULT_PROTOCOL
-    # * <tt>:multi_thread</tt>: true=HTTP connection per thread, false=per process
-    # * <tt>:logger</tt>: for log messages, default: RAILS_DEFAULT_LOGGER else STDOUT
-    # * <tt>:signature_version</tt>:  The signature version : '0','1' or '2'(default)
-    # * <tt>:cache</tt>: true/false: caching for: ec2_describe_images, describe_instances,
-    # describe_images_by_owner, describe_images_by_executable_by, describe_availability_zones,
-    # describe_security_groups, describe_key_pairs, describe_addresses, 
-    # describe_volumes, describe_snapshots methods, default: false.
-    #
-    def initialize(aws_access_key_id=nil, aws_secret_access_key=nil, params={})
-      init({ :name                => 'EC2',
-             :default_host        => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).host   : DEFAULT_HOST,
-             :default_port        => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).port   : DEFAULT_PORT,
-             :default_service     => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).path   : DEFAULT_PATH,
-             :default_protocol    => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).scheme : DEFAULT_PROTOCOL,
-             :default_api_version => @@api },
-           aws_access_key_id    || ENV['AWS_ACCESS_KEY_ID'] , 
-           aws_secret_access_key|| ENV['AWS_SECRET_ACCESS_KEY'],
-           params)
-    end
+  # Create a new handle to an EC2 account. All handles share the same per process or per thread
+  # HTTP connection to Amazon EC2. Each handle is for a specific account. The params have the
+  # following options:
+  # * <tt>:endpoint_url</tt> a fully qualified url to Amazon API endpoint (this overwrites: :server, :port, :service, :protocol and :region). Example: 'https://eu-west-1.ec2.amazonaws.com/'
+  # * <tt>:server</tt>: EC2 service host, default: DEFAULT_HOST
+  # * <tt>:region</tt>: EC2 region (North America by default)
+  # * <tt>:port</tt>: EC2 service port, default: DEFAULT_PORT
+  # * <tt>:protocol</tt>: 'http' or 'https', default: DEFAULT_PROTOCOL
+  # * <tt>:multi_thread</tt>: true=HTTP connection per thread, false=per process
+  # * <tt>:logger</tt>: for log messages, default: RAILS_DEFAULT_LOGGER else STDOUT
+  # * <tt>:signature_version</tt>:  The signature version : '0','1' or '2'(default)
+  # * <tt>:cache</tt>: true/false: caching for: ec2_describe_images, describe_instances,
+  # describe_images_by_owner, describe_images_by_executable_by, describe_availability_zones,
+  # describe_security_groups, describe_key_pairs, describe_addresses, 
+  # describe_volumes, describe_snapshots methods, default: false.
+  #
+  def initialize(aws_access_key_id=nil, aws_secret_access_key=nil, params={})
+    init({ :name                => 'EC2',
+           :default_host        => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).host   : DEFAULT_HOST,
+           :default_port        => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).port   : DEFAULT_PORT,
+           :default_service     => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).path   : DEFAULT_PATH,
+           :default_protocol    => ENV['EC2_URL'] ? URI.parse(ENV['EC2_URL']).scheme : DEFAULT_PROTOCOL,
+           :default_api_version => @@api },
+         aws_access_key_id    || ENV['AWS_ACCESS_KEY_ID'] , 
+         aws_secret_access_key|| ENV['AWS_SECRET_ACCESS_KEY'],
+         params)
+  end
 
-    def generate_request(action, params={}) #:nodoc:
-      generate_request_impl(:get, action, params )
-    end
+  def generate_request(action, params={}) #:nodoc:
+    generate_request_impl(:get, action, params)
+  end
 
-      # Sends request to Amazon and parses the response
-      # Raises AwsError if any banana happened
-    def request_info(request, parser)  #:nodoc:
-      request_info_impl(:ec2_connection, @@bench, request, parser)
+  # Sends request to Amazon and parses the response
+  # Raises AwsError if any banana happened
+  def request_info(request, parser, &callback)  #:nodoc:
+    if @params[:async]
+      request_info_async(:ec2_connection, request, parser, &callback)
+    else
+      request_info_impl(:ec2_connection, @@bench, request, parser, &callback)
     end
+  end
+
+  def request_cache_or_info(method, request, parser_class, benchblock, use_cache=true, parser_callback=nil, completion_callback=nil)
+    if @params[:async]
+      parser = parser_class.new
+      request_info_async(:ec2_connection, request, parser, parser_callback, completion_callback)
+    else
+      super(method, request, parser_class, benchblock, use_cache=true, parser_callback=nil)
+    end
+  end
 
   #-----------------------------------------------------------------
   #      Security groups
   #-----------------------------------------------------------------
 
-      # Retrieve Security Group information. If +list+ is omitted the returns the whole list of groups.
-      #
-      #  ec2.describe_security_groups #=>
-      #    [{:aws_group_name  => "default-1",
-      #      :aws_owner       => "000000000888",
-      #      :aws_description => "Default allowing SSH, HTTP, and HTTPS ingress",
-      #      :aws_perms       =>
-      #        [{:owner => "000000000888", :group => "default"},
-      #         {:owner => "000000000888", :group => "default-1"},
-      #         {:to_port => "-1",  :protocol => "icmp", :from_port => "-1",  :cidr_ips => "0.0.0.0/0"},
-      #         {:to_port => "22",  :protocol => "tcp",  :from_port => "22",  :cidr_ips => "0.0.0.0/0"},
-      #         {:to_port => "80",  :protocol => "tcp",  :from_port => "80",  :cidr_ips => "0.0.0.0/0"},
-      #         {:to_port => "443", :protocol => "tcp",  :from_port => "443", :cidr_ips => "0.0.0.0/0"}]},
-      #    ..., {...}]
-      #
-    def describe_security_groups(list=[])
+    # Retrieve Security Group information. If +list+ is omitted the returns the whole list of groups.
+    #
+    #  ec2.describe_security_groups #=>
+    #    [{:aws_group_name  => "default-1",
+    #      :aws_owner       => "000000000888",
+    #      :aws_description => "Default allowing SSH, HTTP, and HTTPS ingress",
+    #      :aws_perms       =>
+    #        [{:owner => "000000000888", :group => "default"},
+    #         {:owner => "000000000888", :group => "default-1"},
+    #         {:to_port => "-1",  :protocol => "icmp", :from_port => "-1",  :cidr_ips => "0.0.0.0/0"},
+    #         {:to_port => "22",  :protocol => "tcp",  :from_port => "22",  :cidr_ips => "0.0.0.0/0"},
+    #         {:to_port => "80",  :protocol => "tcp",  :from_port => "80",  :cidr_ips => "0.0.0.0/0"},
+    #         {:to_port => "443", :protocol => "tcp",  :from_port => "443", :cidr_ips => "0.0.0.0/0"}]},
+    #    ..., {...}]
+    #
+    def describe_security_groups(list=[],&callback)
       link = generate_request("DescribeSecurityGroups", amazonize_list('GroupName',list.to_a))
-      request_cache_or_info( :describe_security_groups, link,  QEc2DescribeSecurityGroupsParser, @@bench, list.blank?) do |parser|
+      
+      parser_callback = Proc.new do |parser|
         result = []     
         parser.result.each do |item|
           perms = []
@@ -189,6 +203,8 @@ module RightAws
         end
         result
       end
+      
+      request_cache_or_info( :describe_security_groups, link,  QEc2DescribeSecurityGroupsParser, @@bench, list.blank?, parser_callback, callback)
     rescue Exception
       on_exception
     end
@@ -294,9 +310,9 @@ module RightAws
       #     {:aws_fingerprint=> "1e:29:30:47:58:6d:7b:8c:9f:08:11:20:3c:44:52:69:74:80:97:08", :aws_key_name=>"key-2"},
       #      ..., {...} ]
       #
-    def describe_key_pairs(list=[])
+    def describe_key_pairs(list=[], &callback)
       link = generate_request("DescribeKeyPairs", amazonize_list('KeyName',list.to_a))
-      request_cache_or_info :describe_key_pairs, link,  QEc2DescribeKeyPairParser, @@bench, list.blank?
+      request_cache_or_info :describe_key_pairs, link,  QEc2DescribeKeyPairParser, @@bench, list.blank?, nil, callback
     rescue Exception
       on_exception
     end
@@ -366,10 +382,10 @@ module RightAws
     #
     #  ec2.describe_addresses('75.101.154.140') #=> [{:instance_id=>"i-d630cbbf", :public_ip=>"75.101.154.140"}]
     #
-    def describe_addresses(list=[])
+    def describe_addresses(list=[], &callback)
       link = generate_request("DescribeAddresses", 
                               amazonize_list('PublicIp',list.to_a))
-      request_cache_or_info :describe_addresses, link,  QEc2DescribeAddressesParser, @@bench, list.blank?
+      request_cache_or_info :describe_addresses, link,  QEc2DescribeAddressesParser, @@bench, list.blank?, nil, callback
     rescue Exception
       on_exception
     end
@@ -415,10 +431,10 @@ module RightAws
     #                                                      :zone_state=>"available",
     #                                                      :zone_name=>"us-east-1c"}]
     #
-    def describe_availability_zones(list=[])
+    def describe_availability_zones(list=[], &callback)
       link = generate_request("DescribeAvailabilityZones", 
                               amazonize_list('ZoneName',list.to_a))
-      request_cache_or_info :describe_availability_zones, link,  QEc2DescribeAvailabilityZonesParser, @@bench, list.blank?
+      request_cache_or_info :describe_availability_zones, link,  QEc2DescribeAvailabilityZonesParser, @@bench, list.blank?, nil, callback
     rescue Exception
       on_exception
     end
@@ -431,10 +447,10 @@ module RightAws
     #
     #  ec2.describe_regions  #=> ["eu-west-1", "us-east-1"]
     #
-    def describe_regions(list=[])
+    def describe_regions(list=[], &callback)
       link = generate_request("DescribeRegions",
                               amazonize_list('RegionName',list.to_a))
-      request_cache_or_info :describe_regions, link,  QEc2DescribeRegionsParser, @@bench, list.blank?
+      request_cache_or_info :describe_regions, link,  QEc2DescribeRegionsParser, @@bench, list.blank?, nil, callback
     rescue Exception
       on_exception
     end

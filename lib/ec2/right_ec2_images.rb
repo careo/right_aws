@@ -35,14 +35,14 @@ module RightAws
     #     'Owner'        => ['self', ..., 'userN'],
     #     'ExecutableBy' => ['self', 'all', ..., 'userN']
     #   }
-    def ec2_describe_images(params={}, image_type=nil, cache_for=nil) #:nodoc:
+    def ec2_describe_images(params={}, image_type=nil, cache_for=nil, callback=nil) #:nodoc:
       request_hash = {}
       params.each do |list_by, list|
         request_hash.merge! amazonize_list(list_by, list.to_a)
       end
       request_hash['ImageType'] = image_type if image_type
       link = generate_request("DescribeImages", request_hash)
-      request_cache_or_info cache_for, link,  QEc2DescribeImagesParser, @@bench, cache_for
+      request_cache_or_info cache_for, link,  QEc2DescribeImagesParser, @@bench, cache_for, nil, callback
     rescue Exception
       on_exception
     end
@@ -80,10 +80,10 @@ module RightAws
     #
     #  ec2.describe_images(['ami-5aa1f74c'])
     #
-    def describe_images(list=[], image_type=nil)
+    def describe_images(list=[], image_type=nil, &callback)
       list = list.to_a
       cache_for = list.empty? && !image_type ? :describe_images : nil
-      ec2_describe_images({ 'ImageId' => list }, image_type, cache_for)
+      ec2_describe_images({ 'ImageId' => list }, image_type, cache_for, callback)
     end
 
     #  Example:
@@ -91,10 +91,10 @@ module RightAws
     #   ec2.describe_images_by_owner('522821470517')
     #   ec2.describe_images_by_owner('self')
     #
-    def describe_images_by_owner(list=['self'], image_type=nil)
+    def describe_images_by_owner(list=['self'], image_type=nil, &callback)
       list = list.to_a
       cache_for = list==['self'] && !image_type ? :describe_images_by_owner : nil
-      ec2_describe_images({ 'Owner' => list }, image_type, cache_for)
+      ec2_describe_images({ 'Owner' => list }, image_type, cache_for, callback)
     end
 
     #  Example:
@@ -103,10 +103,10 @@ module RightAws
     #   ec2.describe_images_by_executable_by('self')
     #   ec2.describe_images_by_executable_by('all')
     #
-    def describe_images_by_executable_by(list=['self'], image_type=nil)
+    def describe_images_by_executable_by(list=['self'], image_type=nil, &callback)
       list = list.to_a
       cache_for = list==['self'] && !image_type ? :describe_images_by_executable_by : nil
-      ec2_describe_images({ 'ExecutableBy' => list }, image_type, cache_for)
+      ec2_describe_images({ 'ExecutableBy' => list }, image_type, cache_for, callback)
     end
 
 

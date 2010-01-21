@@ -49,10 +49,10 @@ module RightAws
     #        :aws_id         => "vol-58957031",
     #        :aws_created_at => Wed Jun 18 08:19:21 UTC 2008,}, ... ]
     #
-    def describe_volumes(list=[])
+    def describe_volumes(list=[], &callback)
       link = generate_request("DescribeVolumes",
                               amazonize_list('VolumeId',list.to_a))
-      request_cache_or_info :describe_volumes, link,  QEc2DescribeVolumesParser, @@bench, list.blank?
+      request_cache_or_info :describe_volumes, link,  QEc2DescribeVolumesParser, @@bench, list.blank?, nil, callback
     rescue Exception
       on_exception
     end
@@ -158,10 +158,10 @@ module RightAws
     #      :aws_volume_size=>180,
     #      :aws_status=>"completed"}, ...]
     #
-    def describe_snapshots(list=[])
+    def describe_snapshots(list=[], &callback)
       link = generate_request("DescribeSnapshots",
                               amazonize_list('SnapshotId',list.to_a))
-      request_cache_or_info :describe_snapshots, link,  QEc2DescribeSnapshotsParser, @@bench, list.blank?
+      request_cache_or_info :describe_snapshots, link,  QEc2DescribeSnapshotsParser, @@bench, list.blank?, nil, callback
     rescue Exception
       on_exception
     end

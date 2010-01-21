@@ -84,11 +84,13 @@ module RightAws
     #         :ebs_volume_id=>"vol-f900f990"}],
     #      :aws_instance_id=>"i-8ce84ae4"} , ... ]
     #
-    def describe_instances(list=[])
+    def describe_instances(list=[], &callback)
       link = generate_request("DescribeInstances", amazonize_list('InstanceId',list.to_a))
-      request_cache_or_info(:describe_instances, link,  QEc2DescribeInstancesParser, @@bench, list.blank?) do |parser|
+      parser_callback = Proc.new do |parser|
         get_desc_instances(parser.result)
       end
+      
+      request_cache_or_info(:describe_instances, link,  QEc2DescribeInstancesParser, @@bench, list.blank?, parser_callback, callback)
     rescue Exception
       on_exception
     end

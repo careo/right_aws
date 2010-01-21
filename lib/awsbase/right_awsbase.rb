@@ -238,6 +238,7 @@ module RightAws
       @params[:max_connections] ||= 10
       @params[:connection_lifetime] ||= 20*60
       @params[:api_version]  ||= service_info[:default_api_version]
+      @params[:async] ||= false
       @logger = @params[:logger]
       @logger = RAILS_DEFAULT_LOGGER if !@logger && defined?(RAILS_DEFAULT_LOGGER)
       @logger = Logger.new(STDOUT)   if !@logger
@@ -258,6 +259,7 @@ module RightAws
 
     # Returns +true+ if the describe_xxx responses are being cached 
     def caching?
+      return false if @params[:async]
       @params.key?(:cache) ? @params[:cache] : @@caching
     end
     
@@ -309,6 +311,7 @@ module RightAws
 #    def multi_thread
 #      @params[:multi_thread]
 #    end
+
 
     # ACF, AMS, EC2, LBS and SDB uses this guy
     # SQS and S3 use their own methods
@@ -378,6 +381,66 @@ module RightAws
       @connections_storage[server_url][:connection]
     end
 
+
+    def request_info_async(aws_service, request, parser, parser_callback, completion_callback) #:nodoc:
+      @last_request  = request[:request]
+      @last_response = nil
+
+
+      path = request[:request].path
+      uri = "#{request[:protocol]}://#{request[:server]}:#{request[:port]}/"
+
+      #uri = Addressable::URI.new
+      #uri.scheme = request[:protocol]
+      #uri.host = request[:server]
+      #uri.port = request[:port]
+      #uri.path = "/"
+      
+      query = path[2..-1]
+      
+      http = EventMachine::HttpRequest.new(uri).get :query => query, :timeout => 60
+      
+      http.callback { 
+        response = http.response
+        @error_handler = nil
+        body, something = parser.parse(response)
+        if parser_callback
+          result = parser_callback.call(parser)
+        else
+            result = parser.result
+        end
+        completion_callback.call(result)
+      }
+      http.errback  { }
+
+      return
+      result = nil
+      response = @connection.request(request)
+      
+      # check response for errors...
+      @last_response = response
+      if response.is_a?(Net::HTTPSuccess)
+        @error_handler = nil
+        parser.parse(response)
+        result =  parser.result
+      else
+        @error_handler = AWSErrorHandler.new(self, parser, :errors_list => self.class.amazon_problems) unless @error_handler
+        check_result   = @error_handler.check(request)
+        if check_result
+          @error_handler = nil
+          result = check_result 
+        else
+          raise AwsError.new(@last_errors, @last_response.code, @last_request_id)
+        end
+      end
+      
+      if callback
+        return callback.call(result)
+      else
+        return result
+      end
+    end
+
     # All services uses this guy.
     def request_info_impl(aws_service, benchblock, request, parser, &block) #:nodoc:
       @connection    = get_connection(aws_service, request)
@@ -428,7 +491,7 @@ module RightAws
         end
       else
         benchblock.service.add!{ response = @connection.request(request) }
-          # check response for errors...
+        # check response for errors...
         @last_response = response
         if response.is_a?(Net::HTTPSuccess)
           @error_handler = nil
@@ -449,7 +512,7 @@ module RightAws
       raise
     end
 
-    def request_cache_or_info(method, link, parser_class, benchblock, use_cache=true) #:nodoc:
+    def request_cache_or_info(method, link, parser_class, benchblock, use_cache=true, parser_callback=nil) #:nodoc:
       # We do not want to break the logic of parsing hence will use a dummy parser to process all the standard
       # steps (errors checking etc). The dummy parser does nothig - just returns back the params it received.
       # If the caching is enabled and hit then throw  AwsNoChange.
@@ -459,7 +522,13 @@ module RightAws
       cache_hits?(method.to_sym, response.body) if use_cache
       parser = parser_class.new(:logger => @logger)
       benchblock.xml.add!{ parser.parse(response, params) }
-      result = block_given? ? yield(parser) : parser.result
+      
+      if parser_callback
+        result = parser_callback.call(parser)
+      else
+        result = parser.result
+      end
+
       # update parsed data
       update_cache(method.to_sym, :parsed => result) if use_cache
       result
