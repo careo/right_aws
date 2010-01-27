@@ -389,13 +389,6 @@ module RightAws
 
       path = request[:request].path
       uri = "#{request[:protocol]}://#{request[:server]}:#{request[:port]}/"
-
-      #uri = Addressable::URI.new
-      #uri.scheme = request[:protocol]
-      #uri.host = request[:server]
-      #uri.port = request[:port]
-      #uri.path = "/"
-      
       query = path[2..-1]
       
       http = EventMachine::HttpRequest.new(uri).get :query => query, :timeout => 60
@@ -407,38 +400,34 @@ module RightAws
         if parser_callback
           result = parser_callback.call(parser)
         else
-            result = parser.result
+          result = parser.result
         end
         completion_callback.call(result)
       }
       http.errback  { }
+      
+      return http
+      
+      # TODO: everythng below this line, ie, handle errors.
+      #response = @connection.request(request)
+      #
+      ## check response for errors...
+      #@last_response = response
+      #if response.is_a?(Net::HTTPSuccess)
+      #  @error_handler = nil
+      #  parser.parse(response)
+      #  result =  parser.result
+      #else
+      #  @error_handler = AWSErrorHandler.new(self, parser, :errors_list => self.class.amazon_problems) unless @error_handler
+      #  check_result   = @error_handler.check(request)
+      #  if check_result
+      #    @error_handler = nil
+      #    result = check_result 
+      #  else
+      #    raise AwsError.new(@last_errors, @last_response.code, @last_request_id)
+      #  end
+      #end
 
-      return
-      result = nil
-      response = @connection.request(request)
-      
-      # check response for errors...
-      @last_response = response
-      if response.is_a?(Net::HTTPSuccess)
-        @error_handler = nil
-        parser.parse(response)
-        result =  parser.result
-      else
-        @error_handler = AWSErrorHandler.new(self, parser, :errors_list => self.class.amazon_problems) unless @error_handler
-        check_result   = @error_handler.check(request)
-        if check_result
-          @error_handler = nil
-          result = check_result 
-        else
-          raise AwsError.new(@last_errors, @last_response.code, @last_request_id)
-        end
-      end
-      
-      if callback
-        return callback.call(result)
-      else
-        return result
-      end
     end
 
     # All services uses this guy.
